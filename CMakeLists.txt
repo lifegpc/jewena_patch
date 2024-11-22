@@ -13,4 +13,4 @@ set(DETOURS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/detours.lib")
 add_library(jewena_patch SHARED dllmain.cpp)
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
 
-add_executable(jewena-chs WIN32 main.cpp winres.rc)
+add_executable(jewena-chs WIN32 main.cpp winres.rc jewena-chs.exe.manifest)
