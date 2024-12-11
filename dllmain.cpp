@@ -2,9 +2,12 @@
 #include "detours.h"
 #include <stdio.h>
 #include "wchar_util.h"
+#include <unordered_map>
 
 static HFONT(WINAPI *TrueCreateFontW)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) = CreateFontW;
 static HFONT(WINAPI *TrueCreateFontA)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCSTR lpFaceName) = CreateFontA;
+
+static std::unordered_map<std::string, std::string> transTable;
 
 char* to_utf8(char* target, const char* source, UINT cp) {
     int count = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -28,6 +31,10 @@ char* WINAPI jis_to_utf8(char* target, const char* source) {
     char* result = to_utf8(target, source, CP_UTF8);
     if (!result) {
         result = to_utf8(target, source, 932);
+        if (transTable.find(result) != transTable.end()) {
+            auto& v = transTable[result];
+            strcpy(result, v.c_str());
+        }
     }
     return result;
 }
@@ -65,6 +72,10 @@ HFONT WINAPI HookedCreateFontA(int nHeight, int nWidth, int nEscapement, int nOr
 }
 
 extern "C" __declspec(dllexport) void Attach() {
+    transTable["ミリアエッチシーン"] = "米莉亚的H场景";
+    transTable["プリリッコエッチシーン"] = "普里利科的H场景";
+    transTable["マスターエッチシーン"] = "队长的H场景";
+    transTable["カーラエッチシーン"] = "卡拉的H场景";
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     h = GetHandle();
