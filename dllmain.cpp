@@ -34,7 +34,7 @@ char* WINAPI jis_to_utf8(char* target, const char* source) {
 
 PVOID GetHandle() {
     HMODULE hModule = GetModuleHandleA(NULL);
-    return (char*)hModule + 0xf3c20;
+    return (char*)hModule + 0xf40e0;
 }
 
 static PVOID h = nullptr;
