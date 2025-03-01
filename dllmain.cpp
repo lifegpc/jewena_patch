@@ -1,10 +1,13 @@
 #include <Windows.h>
+#include "config.hpp"
 #include "detours.h"
 #include <stdio.h>
 #include "wchar_util.h"
 
 static HFONT(WINAPI *TrueCreateFontW)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) = CreateFontW;
 static HFONT(WINAPI *TrueCreateFontA)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCSTR lpFaceName) = CreateFontA;
+static Config config;
+static std::wstring defaultFont;
 
 char* to_utf8(char* target, const char* source, UINT cp) {
     int count = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -42,7 +45,7 @@ static PVOID h = nullptr;
 HFONT WINAPI HookedCreateFontW(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) {
     std::wstring name(lpFaceName);
     if (name == L"Meiryo") {
-        lpFaceName = L"微软雅黑";
+        lpFaceName = defaultFont.c_str();
     }
     return TrueCreateFontW(nHeight, nWidth, nEscapement, nOrientation, fnWeight, dwItalic, dwUnderline, dwStrikeOut, dwCharSet, dwOutPrecision, dwClipPrecision, dwQuality, dwPitchAndFamily, lpFaceName);
 }
@@ -53,7 +56,7 @@ HFONT WINAPI HookedCreateFontA(int nHeight, int nWidth, int nEscapement, int nOr
     for (int i = 0; i < 4; i++) {
         if (wchar_util::str_to_wstr(font, lpFaceName, cp[i])) {
             if (font == L"Meiryo") {
-                font = L"微软雅黑";
+                font = defaultFont;
             }
             return TrueCreateFontW(nHeight, nWidth, nEscapement, nOrientation, fnWeight, dwItalic, dwUnderline, dwStrikeOut, dwCharSet, dwOutPrecision, dwClipPrecision, dwQuality, dwPitchAndFamily, font.c_str());
         }
@@ -65,6 +68,10 @@ HFONT WINAPI HookedCreateFontA(int nHeight, int nWidth, int nEscapement, int nOr
 }
 
 extern "C" __declspec(dllexport) void Attach() {
+    config.Load("config.txt");
+    if (!wchar_util::str_to_wstr(defaultFont, config.configs["defaultFont"], CP_UTF8)) {
+        defaultFont = L"微软雅黑";
+    }
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     h = GetHandle();

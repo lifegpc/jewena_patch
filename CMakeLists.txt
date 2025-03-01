@@ -14,7 +14,7 @@ set(ENABLE_ICONV OFF CACHE BOOL "Libiconv is not needed.")
 add_subdirectory(utils)
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/utils")
 
-add_library(jewena_patch SHARED dllmain.cpp)
+add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp)
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
 target_link_libraries(jewena_patch utils)
 
