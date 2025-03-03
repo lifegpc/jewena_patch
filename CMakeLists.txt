@@ -37,7 +37,7 @@ set(ZLIB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Zlib is needed.")
 find_package(ZLIB REQUIRED)
 add_subdirectory("libzip")
 
-add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp vfs.hpp vfs.cpp)
+add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp vfs.hpp vfs.cpp string_replace_file.hpp string_replace_file.cpp)
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
 target_link_libraries(jewena_patch utils)
 target_link_libraries(jewena_patch zip)

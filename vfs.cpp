@@ -81,6 +81,7 @@ HANDLE VFS::CreateFileW(std::wstring path) {
         return INVALID_HANDLE_VALUE;
     }
     str = (*c).first;
+    str = str_util::str_replace(str, "\\", "/");
     zip_t* archive = nullptr;
     zip_uint64_t index = 0;
     for (auto a : archives) {
@@ -142,6 +143,20 @@ DWORD VFS::GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh) {
         *lpFileSizeHigh = size >> 32;
     }
     return size;
+}
+
+BOOL VFS::GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize) {
+    auto f = handles.find(hFile);
+    if (f == handles.end()) {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+    auto data = *f;
+    auto name = data.second;
+    auto size = files[name];
+    lpFileSize->LowPart = size & 0xFFFFFFFF;
+    lpFileSize->HighPart = size >> 32;
+    return TRUE;
 }
 
 DWORD VFS::SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod) {

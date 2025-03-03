@@ -38,6 +38,7 @@ class VFS {
         bool ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead);
         void CloseHandle(HANDLE hFile);
         DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
+        BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
         DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod);
         std::unordered_map<std::string, zip_uint64_t, CaseInsensitiveHash, CaseInsensitiveEqual> files;
         std::string GetBasePath();

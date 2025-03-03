@@ -9,6 +9,7 @@
 #include "fileop.h"
 #include <algorithm>
 #include <fcntl.h>
+#include "string_replace_file.hpp"
 
 static HFONT(WINAPI *TrueCreateFontW)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) = CreateFontW;
 static HFONT(WINAPI *TrueCreateFontA)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCSTR lpFaceName) = CreateFontA;
@@ -16,6 +17,7 @@ static HANDLE(WINAPI *TrueCreateFileW)(LPCWSTR lpFileName, DWORD dwDesiredAccess
 static BOOL(WINAPI *TrueReadFile)(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead, LPOVERLAPPED lpOverlapped) = ReadFile;
 static BOOL(WINAPI *TrueCloseHandle)(HANDLE hObject) = CloseHandle;
 static DWORD(WINAPI *TrueGetFileSize)(HANDLE hFile, LPDWORD lpFileSizeHigh) = GetFileSize;
+static decltype(GetFileSizeEx) *TrueGetFileSizeEx = GetFileSizeEx;
 static DWORD(WINAPI *TrueSetFilePointer)(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod) = SetFilePointer;
 static decltype(FindFirstFileExW)* OriginalFindFirstFileExW = FindFirstFileExW;
 static decltype(FindNextFileW)* OriginalFindNextFileW = FindNextFileW;
@@ -24,6 +26,7 @@ static decltype(FindClose)* OriginalFindClose = FindClose;
 static Config config;
 static std::wstring defaultFont;
 static VFS vfs;
+static StringReplaceFile replaceFile;
 
 struct CustomFindContext {
     std::vector<WIN32_FIND_DATAW> entries;
@@ -166,6 +169,15 @@ char* WINAPI jis_to_utf8(char* target, const char* source) {
     if (!result) {
         result = to_utf8(target, source, 932);
     }
+    if (!replaceFile.messages.empty() && result) {
+        std::string str(result);
+        auto re = replaceFile.messages.find(str);
+        if (re != replaceFile.messages.end()) {
+            str = (*re).second;
+            strcpy(target, str.c_str());
+            result = target;
+        }
+    }
     return result;
 }
 
@@ -234,6 +246,13 @@ DWORD WINAPI HookedGetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh) {
     return TrueGetFileSize(hFile, lpFileSizeHigh);
 }
 
+BOOL WINAPI HookedGetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize) {
+    if (vfs.ContainsHandle(hFile)) {
+        return vfs.GetFileSizeEx(hFile, lpFileSize);
+    }
+    return TrueGetFileSizeEx(hFile, lpFileSize);
+}
+
 DWORD WINAPI HookedSetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod) {
     if (vfs.ContainsHandle(hFile)) {
         return vfs.SetFilePointer(hFile, lDistanceToMove, lpDistanceToMoveHigh, dwMoveMethod);
@@ -244,6 +263,9 @@ DWORD WINAPI HookedSetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDi
 extern "C" __declspec(dllexport) void Attach() {
     config.Load("config.txt");
     if (!wchar_util::str_to_wstr(defaultFont, config.configs["defaultFont"], CP_UTF8)) {
+        defaultFont = L"微软雅黑";
+    }
+    if (defaultFont.empty()) {
         defaultFont = L"微软雅黑";
     }
     if (!vfs.AddArchive("jewena-chs.dat")) {
@@ -261,11 +283,18 @@ extern "C" __declspec(dllexport) void Attach() {
     DetourAttach(&TrueReadFile, HookedReadFile);
     DetourAttach(&TrueCloseHandle, HookedCloseHandle);
     DetourAttach(&TrueGetFileSize, HookedGetFileSize);
+    DetourAttach(&TrueGetFileSizeEx, HookedGetFileSizeEx);
     DetourAttach(&TrueSetFilePointer, HookedSetFilePointer);
     // DetourAttach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
     // DetourAttach(&OriginalFindNextFileW, HookedFindNextFileW);
     // DetourAttach(&OriginalFindClose, HookedFindClose);
     DetourTransactionCommit();
+    std::string stringReplaceFile = config.configs["stringReplaceFile"];
+    if (!stringReplaceFile.empty()) {
+        if (!replaceFile.Load(stringReplaceFile)) {
+            MessageBoxW(NULL, L"无法加载文本替换文件。", L"错误", MB_ICONERROR);
+        }
+    }
 #if _DEBUG
     while( !::IsDebuggerPresent() )
     ::Sleep( 1000 );
@@ -283,6 +312,7 @@ extern "C" __declspec(dllexport) void Detach() {
     DetourDetach(&TrueReadFile, HookedReadFile);
     DetourDetach(&TrueCloseHandle, HookedCloseHandle);
     DetourDetach(&TrueGetFileSize, HookedGetFileSize);
+    DetourDetach(&TrueGetFileSizeEx, HookedGetFileSizeEx);
     DetourDetach(&TrueSetFilePointer, HookedSetFilePointer);
     // DetourDetach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
     // DetourDetach(&OriginalFindNextFileW, HookedFindNextFileW);
