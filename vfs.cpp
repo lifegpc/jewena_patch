@@ -75,6 +75,12 @@ HANDLE VFS::CreateFileW(std::wstring path) {
     }
     str = fileop::relpath(str, base_path);
     str = str_util::str_replace(str, "\\", "/");
+    auto c = files.find(str);
+    if (c == files.end()) {
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return INVALID_HANDLE_VALUE;
+    }
+    str = (*c).first;
     zip_t* archive = nullptr;
     zip_uint64_t index = 0;
     for (auto a : archives) {

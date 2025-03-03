@@ -3,6 +3,28 @@
 #include <string>
 #include <unordered_map>
 #include <Windows.h>
+#include "str_util.h"
+
+struct CaseInsensitiveHash {
+    size_t operator()(const std::string& str) const {
+        // 创建字符串的小写副本
+        std::string lowercaseStr = str_util::tolower(str);
+        
+        // 对小写字符串使用标准哈希函数
+        return std::hash<std::string>{}(lowercaseStr);
+    }
+};
+
+// 比较函数，忽略大小写
+struct CaseInsensitiveEqual {
+    bool operator()(const std::string& left, const std::string& right) const {
+        return left.size() == right.size() &&
+               std::equal(left.begin(), left.end(), right.begin(),
+                          [](unsigned char a, unsigned char b) {
+                              return std::tolower(a) == std::tolower(b);
+                          });
+    }
+};
 
 class VFS {
     public:
@@ -17,7 +39,7 @@ class VFS {
         void CloseHandle(HANDLE hFile);
         DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
         DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod);
-        std::unordered_map<std::string, zip_uint64_t> files;
+        std::unordered_map<std::string, zip_uint64_t, CaseInsensitiveHash, CaseInsensitiveEqual> files;
         std::string GetBasePath();
     private:
         std::string base_path;

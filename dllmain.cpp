@@ -262,9 +262,9 @@ extern "C" __declspec(dllexport) void Attach() {
     DetourAttach(&TrueCloseHandle, HookedCloseHandle);
     DetourAttach(&TrueGetFileSize, HookedGetFileSize);
     DetourAttach(&TrueSetFilePointer, HookedSetFilePointer);
-    DetourAttach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
-    DetourAttach(&OriginalFindNextFileW, HookedFindNextFileW);
-    DetourAttach(&OriginalFindClose, HookedFindClose);
+    // DetourAttach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
+    // DetourAttach(&OriginalFindNextFileW, HookedFindNextFileW);
+    // DetourAttach(&OriginalFindClose, HookedFindClose);
     DetourTransactionCommit();
 #if _DEBUG
     while( !::IsDebuggerPresent() )
@@ -284,9 +284,9 @@ extern "C" __declspec(dllexport) void Detach() {
     DetourDetach(&TrueCloseHandle, HookedCloseHandle);
     DetourDetach(&TrueGetFileSize, HookedGetFileSize);
     DetourDetach(&TrueSetFilePointer, HookedSetFilePointer);
-    DetourDetach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
-    DetourDetach(&OriginalFindNextFileW, HookedFindNextFileW);
-    DetourDetach(&OriginalFindClose, HookedFindClose);
+    // DetourDetach(&OriginalFindFirstFileExW, HookedFindFirstFileExW);
+    // DetourDetach(&OriginalFindNextFileW, HookedFindNextFileW);
+    // DetourDetach(&OriginalFindClose, HookedFindClose);
     DetourTransactionCommit();
 }
 
