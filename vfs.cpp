@@ -74,7 +74,7 @@ HANDLE VFS::CreateFileW(std::wstring path) {
         return INVALID_HANDLE_VALUE;
     }
     str = fileop::relpath(str, base_path);
-    str = str_util::str_replace(str, "\\", "/");
+    str = str_util::str_replace(str, "/", "\\");
     auto c = files.find(str);
     if (c == files.end()) {
         SetLastError(ERROR_FILE_NOT_FOUND);
@@ -169,7 +169,11 @@ DWORD VFS::SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceTo
         SetLastError(ERROR_INVALID_HANDLE);
         return INVALID_SET_FILE_POINTER;
     }
-    zip_int64_t n = zip_fseek(file, lDistanceToMove, dwMoveMethod);
+    zip_int64_t offset = lDistanceToMove;
+    if (lpDistanceToMoveHigh) {
+        offset |= ((zip_int64_t)*lpDistanceToMoveHigh) << 32;
+    }
+    zip_int64_t n = zip_fseek(file, offset, dwMoveMethod);
     if (n == -1) {
         SetLastError(ERROR_INVALID_HANDLE);
         return INVALID_SET_FILE_POINTER;
