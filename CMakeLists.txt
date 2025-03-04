@@ -41,6 +41,5 @@ add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp vfs.hpp vfs.cp
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
 target_link_libraries(jewena_patch utils)
 target_link_libraries(jewena_patch zip)
-target_link_libraries(jewena_patch shlwapi.lib)
 
 add_executable(jewena-chs WIN32 main.cpp winres.rc jewena-chs.exe.manifest)
