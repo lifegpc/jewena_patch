@@ -3,6 +3,34 @@
 #include "str_util.h"
 #include "fileop.h"
 #include "shlwapi.h"
+#include "time_util.h"
+
+DWORD mapZipError(zip_file_t* file) {
+    auto error = zip_file_get_error(file);
+    if (error) {
+        switch (error->zip_err) {
+        case ZIP_ER_EOF:
+            return ERROR_HANDLE_EOF;
+        case ZIP_ER_INVAL:
+            return ERROR_INVALID_PARAMETER;
+        case ZIP_ER_SEEK:
+            return ERROR_SEEK;
+        case ZIP_ER_READ:
+            return ERROR_READ_FAULT;
+        case ZIP_ER_CRC:
+            return ERROR_CRC;
+        case ZIP_ER_ZIPCLOSED:
+            return ERROR_INVALID_HANDLE;
+        case ZIP_ER_NOENT:
+            return ERROR_FILE_NOT_FOUND;
+        case ZIP_ER_EXISTS:
+            return ERROR_FILE_EXISTS;
+        case ZIP_ER_OPEN:
+            return ERROR_OPEN_FAILED;
+        }
+    }
+    return ERROR_INVALID_HANDLE;
+}
 
 VFS::VFS() {
     WCHAR exePath[MAX_PATH];
@@ -30,7 +58,7 @@ VFS::~VFS() {
 bool VFS::AddArchive(std::string path) {
     zip_t* archive = zip_open(path.c_str(), ZIP_RDONLY, nullptr);
     if (!archive) return false;
-    archives.push_back(archive);
+    archives.push_front(archive);
     auto len = zip_get_num_entries(archive, 0);
     for (zip_int64_t i = 0; i < len; i++) {
         struct zip_stat st;
@@ -42,9 +70,64 @@ bool VFS::AddArchive(std::string path) {
         }
         std::string name = st.name;
         name = str_util::str_replace(name, "/", "\\");
-        files[name] = st.size;
+        files[name] = st;
     }
     return true;
+}
+
+bool VFS::AddArchiveFromResource(HMODULE hModule, int resourceID) {
+    HRSRC hResInfo = FindResource(hModule, MAKEINTRESOURCE(resourceID), RT_RCDATA);
+    if (!hResInfo) return false;
+    HGLOBAL hResData = LoadResource(hModule, hResInfo);
+    if (!hResData) return false;
+    LPVOID lpResData = LockResource(hResData);
+    if (!lpResData) return false;
+    DWORD dwSize = SizeofResource(hModule, hResInfo);
+    if (!dwSize) return false;
+    auto re = zip_source_buffer_create(lpResData, dwSize, 0, nullptr);
+    if (!re) {
+        return false;
+    }
+    zip_t* archive = zip_open_from_source(re, ZIP_RDONLY, nullptr);
+    if (!archive) return false;
+    archives.push_front(archive);
+    auto len = zip_get_num_entries(archive, 0);
+    for (zip_int64_t i = 0; i < len; i++) {
+        struct zip_stat st;
+        zip_stat_init(&st);
+        zip_stat_index(archive, i, 0, &st);
+        // Skip directories/folders (directory entries usually end with a '/')
+        if (st.name[strlen(st.name) - 1] == '/') {
+            continue;
+        }
+        std::string name = st.name;
+        name = str_util::str_replace(name, "/", "\\");
+        files[name] = st;
+    }
+    return true;
+}
+
+void VFS::AddArchiveWithErrorMsg(std::string path) {
+    if (!AddArchive(path)) {
+        std::wstring wpath;
+        if (!wchar_util::str_to_wstr(wpath, path, CP_UTF8)) {
+            MessageBoxW(NULL, L"无法打开资源文件。请检查资源文件是否完整", L"错误", MB_ICONERROR);
+            ExitProcess(1);
+            return;
+        }
+        std::wstring wmsg = L"无法打开 " + wpath + L"。请检查文件是否存在";
+        MessageBoxW(NULL, wmsg.c_str(), L"错误", MB_ICONERROR);
+        ExitProcess(1);
+        return;
+    }
+}
+
+void VFS::AddArchiveFromResourceWithErrorMsg(HMODULE hModule, int resourceID) {
+    if (!AddArchiveFromResource(hModule, resourceID)) {
+        MessageBoxW(NULL, L"无法打开内置的资源文件。", L"错误", MB_ICONERROR);
+        ExitProcess(1);
+        return;
+    }
 }
 
 bool VFS::ContainsFile(std::string path) {
@@ -112,7 +195,7 @@ bool VFS::ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LP
     }
     zip_int64_t n = zip_fread(file, lpBuffer, nNumberOfBytesToRead);
     if (n == -1) {
-        SetLastError(ERROR_INVALID_HANDLE);
+        SetLastError(mapZipError(file));
         return false;
     }
     if (lpNumberOfBytesRead) {
@@ -138,7 +221,7 @@ DWORD VFS::GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh) {
     }
     auto data = *f;
     auto name = data.second;
-    auto size = files[name];
+    auto size = files[name].size;
     if (lpFileSizeHigh) {
         *lpFileSizeHigh = size >> 32;
     }
@@ -153,9 +236,8 @@ BOOL VFS::GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize) {
     }
     auto data = *f;
     auto name = data.second;
-    auto size = files[name];
-    lpFileSize->LowPart = size & 0xFFFFFFFF;
-    lpFileSize->HighPart = size >> 32;
+    auto size = files[name].size;
+    lpFileSize->QuadPart = size;
     return TRUE;
 }
 
@@ -173,14 +255,83 @@ DWORD VFS::SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceTo
     if (lpDistanceToMoveHigh) {
         offset |= ((zip_int64_t)*lpDistanceToMoveHigh) << 32;
     }
-    zip_int64_t n = zip_fseek(file, offset, dwMoveMethod);
-    if (n == -1) {
-        SetLastError(ERROR_INVALID_HANDLE);
+    zip_int8_t code = zip_fseek(file, offset, dwMoveMethod);
+    if (code == -1) {
+        SetLastError(mapZipError(file));
         return INVALID_SET_FILE_POINTER;
+    }
+    zip_int64_t n = zip_ftell(file);
+    if (n == -1) {
+        SetLastError(mapZipError(file));
+        return INVALID_SET_FILE_POINTER;
+    }
+    if (lpDistanceToMoveHigh) {
+        *lpDistanceToMoveHigh = n >> 32;
     }
     return n;
 }
 
+BOOL VFS::SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove, PLARGE_INTEGER lpNewFilePointer, DWORD dwMoveMethod) {
+    if (!ContainsHandle(hFile)) {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+    zip_file_t* file = (zip_file_t*)hFile;
+    if (!file) {
+        SetLastError(ERROR_INVALID_HANDLE);
+        return FALSE;
+    }
+    zip_int64_t offset = liDistanceToMove.QuadPart;
+    zip_int8_t code = zip_fseek(file, offset, dwMoveMethod);
+    if (code == -1) {
+        SetLastError(mapZipError(file));
+        return FALSE;
+    }
+    zip_int64_t n = zip_ftell(file);
+    if (n == -1) {
+        SetLastError(mapZipError(file));
+        return FALSE;
+    }
+    if (lpNewFilePointer) {
+        lpNewFilePointer->QuadPart = n;
+    }
+    return TRUE;
+}
+
 std::string VFS::GetBasePath() {
     return base_path;
+}
+
+BOOL VFS::GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId, LPVOID lpFileInformation) {
+    std::string path;
+    if (!wchar_util::wstr_to_str(path, lpFileName, CP_UTF8)) {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return FALSE;
+    }
+    path = str_util::str_replace(path, "/", "\\");
+    if (fileop::isabs(path)) {
+        path = fileop::relpath(path, base_path);
+    }
+    auto c = files.find(path);
+    if (c == files.end()) {
+        SetLastError(ERROR_FILE_NOT_FOUND);
+        return FALSE;
+    }
+    auto st = (*c).second;
+    if (fInfoLevelId == GetFileExInfoStandard) {
+        if (!lpFileInformation) {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return FALSE;
+        }
+        WIN32_FILE_ATTRIBUTE_DATA data;
+        data.dwFileAttributes = FILE_ATTRIBUTE_READONLY;
+        time_util::time_t_to_file_time(st.mtime, &data.ftLastWriteTime);
+        data.ftCreationTime = data.ftLastWriteTime;
+        data.ftLastAccessTime = data.ftLastWriteTime;
+        data.nFileSizeHigh = st.size >> 32;
+        data.nFileSizeLow = st.size & 0xFFFFFFFF;
+        memcpy(lpFileInformation, &data, sizeof(data));
+        return TRUE;
+    }
+    return FALSE;
 }

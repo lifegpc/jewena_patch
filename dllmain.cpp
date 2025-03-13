@@ -17,6 +17,10 @@ static BOOL(WINAPI *TrueCloseHandle)(HANDLE hObject) = CloseHandle;
 static DWORD(WINAPI *TrueGetFileSize)(HANDLE hFile, LPDWORD lpFileSizeHigh) = GetFileSize;
 static decltype(GetFileSizeEx) *TrueGetFileSizeEx = GetFileSizeEx;
 static DWORD(WINAPI *TrueSetFilePointer)(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod) = SetFilePointer;
+static decltype(SetFilePointerEx) *TrueSetFilePointerEx = SetFilePointerEx;
+static decltype(GetFileType) *TrueGetFileType = GetFileType;
+static decltype(GetFileAttributesW) *TrueGetFileAttributesW = GetFileAttributesW;
+static decltype(GetFileAttributesExW) *TrueGetFileAttributesExW = GetFileAttributesExW;
 
 static Config config;
 static std::wstring defaultFont;
@@ -143,6 +147,34 @@ DWORD WINAPI HookedSetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDi
     return TrueSetFilePointer(hFile, lDistanceToMove, lpDistanceToMoveHigh, dwMoveMethod);
 }
 
+BOOL WINAPI HookedSetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove, PLARGE_INTEGER lpNewFilePointer, DWORD dwMoveMethod) {
+    if (vfs.ContainsHandle(hFile)) {
+        return vfs.SetFilePointerEx(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod);
+    }
+    return TrueSetFilePointerEx(hFile, liDistanceToMove, lpNewFilePointer, dwMoveMethod);
+}
+
+DWORD WINAPI HookedGetFileType(HANDLE hFile) {
+    if (vfs.ContainsHandle(hFile)) {
+        return FILE_TYPE_DISK;
+    }
+    return TrueGetFileType(hFile);
+}
+
+DWORD WINAPI HookedGetFileAttributesW(LPCWSTR lpFileName) {
+    if (vfs.ContainsFile(lpFileName)) {
+        return FILE_ATTRIBUTE_READONLY;
+    }
+    return TrueGetFileAttributesW(lpFileName);
+}
+
+BOOL WINAPI HookedGetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId, LPVOID lpFileInformation) {
+    if (vfs.ContainsFile(lpFileName)) {
+        return vfs.GetFileAttributesExW(lpFileName, fInfoLevelId, lpFileInformation);
+    }
+    return TrueGetFileAttributesExW(lpFileName, fInfoLevelId, lpFileInformation);
+}
+
 extern "C" __declspec(dllexport) void Attach() {
     config.Load("config.txt");
     if (!wchar_util::str_to_wstr(defaultFont, config.configs["defaultFont"], CP_UTF8)) {
@@ -151,11 +183,7 @@ extern "C" __declspec(dllexport) void Attach() {
     if (defaultFont.empty()) {
         defaultFont = L"微软雅黑";
     }
-    if (!vfs.AddArchive("jewena-chs.dat")) {
-        MessageBoxW(NULL, L"无法打开 jewena-chs.dat。请检查文件是否存在", L"错误", MB_ICONERROR);
-        ExitProcess(1);
-        return;
-    }
+    vfs.AddArchiveWithErrorMsg("jewena-chs.dat");
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     h = GetHandle();
@@ -168,6 +196,10 @@ extern "C" __declspec(dllexport) void Attach() {
     DetourAttach(&TrueGetFileSize, HookedGetFileSize);
     DetourAttach(&TrueGetFileSizeEx, HookedGetFileSizeEx);
     DetourAttach(&TrueSetFilePointer, HookedSetFilePointer);
+    DetourAttach(&TrueSetFilePointerEx, HookedSetFilePointerEx);
+    DetourAttach(&TrueGetFileType, HookedGetFileType);
+    DetourAttach(&TrueGetFileAttributesW, HookedGetFileAttributesW);
+    DetourAttach(&TrueGetFileAttributesExW, HookedGetFileAttributesExW);
     DetourTransactionCommit();
     std::string stringReplaceFile = config.configs["stringReplaceFile"];
     if (!stringReplaceFile.empty()) {
@@ -194,6 +226,10 @@ extern "C" __declspec(dllexport) void Detach() {
     DetourDetach(&TrueGetFileSize, HookedGetFileSize);
     DetourDetach(&TrueGetFileSizeEx, HookedGetFileSizeEx);
     DetourDetach(&TrueSetFilePointer, HookedSetFilePointer);
+    DetourDetach(&TrueSetFilePointerEx, HookedSetFilePointerEx);
+    DetourDetach(&TrueGetFileType, HookedGetFileType);
+    DetourDetach(&TrueGetFileAttributesW, HookedGetFileAttributesW);
+    DetourDetach(&TrueGetFileAttributesExW, HookedGetFileAttributesExW);
     DetourTransactionCommit();
 }
 

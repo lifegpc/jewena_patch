@@ -31,16 +31,21 @@ class VFS {
         VFS();
         ~VFS();
         bool AddArchive(std::string path);
+        bool AddArchiveFromResource(HMODULE hModule, int resourceID);
+        void AddArchiveWithErrorMsg(std::string path);
+        void AddArchiveFromResourceWithErrorMsg(HMODULE hModule, int resourceID);
         bool ContainsFile(std::string path);
         bool ContainsFile(std::wstring path);
         bool ContainsHandle(HANDLE hFile);
         HANDLE CreateFileW(std::wstring path);
         bool ReadFile(HANDLE hFile, LPVOID lpBuffer, DWORD nNumberOfBytesToRead, LPDWORD lpNumberOfBytesRead);
         void CloseHandle(HANDLE hFile);
+        BOOL GetFileAttributesExW(LPCWSTR lpFileName, GET_FILEEX_INFO_LEVELS fInfoLevelId, LPVOID lpFileInformation);
         DWORD GetFileSize(HANDLE hFile, LPDWORD lpFileSizeHigh);
         BOOL GetFileSizeEx(HANDLE hFile, PLARGE_INTEGER lpFileSize);
         DWORD SetFilePointer(HANDLE hFile, LONG lDistanceToMove, PLONG lpDistanceToMoveHigh, DWORD dwMoveMethod);
-        std::unordered_map<std::string, zip_uint64_t, CaseInsensitiveHash, CaseInsensitiveEqual> files;
+        BOOL SetFilePointerEx(HANDLE hFile, LARGE_INTEGER liDistanceToMove, PLARGE_INTEGER lpNewFilePointer, DWORD dwMoveMethod);
+        std::unordered_map<std::string, zip_stat_t, CaseInsensitiveHash, CaseInsensitiveEqual> files;
         std::string GetBasePath();
     private:
         std::string base_path;
