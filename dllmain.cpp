@@ -124,6 +124,15 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
                 player_log(AV_LOG_ERROR, "Failed to initialize player settings.\n");
                 goto end;
             }
+            player_settings_set_resize(settings, 0);
+            uint32_t audioBuffer = config.AudioBuffer();
+            if (audioBuffer) {
+                player_settings_set_audio_buffer_size(settings, audioBuffer);
+            }
+            uint32_t videoBuffer = config.VideoBuffer();
+            if (videoBuffer) {
+                player_settings_set_video_buffer_size(settings, videoBuffer);
+            }
         }
         player_settings_set_hWnd(settings, (void**)GetHwndPointer());
         if (player_create2(videoName, &player, settings)) {
@@ -134,6 +143,7 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
             player_log(AV_LOG_ERROR, "Failed to initialize player.\n");
             goto end;
         }
+        player_wait_until_buffer_is_full(player);
         if (player_play(player)) {
             player_log(AV_LOG_ERROR, "Failed to play video.\n");
             goto end;

@@ -117,6 +117,17 @@ PLAYER_API int player_play(PlayerSession* session);
 */
 PLAYER_API int player_pause(PlayerSession* session);
 /**
+ * @brief 判断播放器缓冲区是否已满
+ * @param session 播放器会话指针
+ * @return 是否已满
+ */
+PLAYER_API int player_buffer_is_full(PlayerSession* session);
+/**
+ * @brief 等待播放器缓冲区满
+ * @param session 播放器会话指针
+ */
+PLAYER_API void player_wait_until_buffer_is_full(PlayerSession* session);
+/**
  * @brief 判断播放器是否正在播放
  * @param session 播放器会话指针
  * @return 是否正在播放
@@ -147,6 +158,18 @@ PLAYER_API void player_settings_default(PlayerSettings* settings);
  * @param resize 是否自动调整窗口大小
 */
 PLAYER_API void player_settings_set_resize(PlayerSettings* settings, unsigned char resize);
+/**
+ * @brief 设置音频缓冲区大小
+ * @param settings 播放器设置指针
+ * @param size 音频缓冲区大小（单位 ms）
+*/
+PLAYER_API void player_settings_set_audio_buffer_size(PlayerSettings* settings, uint32_t size);
+/**
+ * @brief 设置视频缓冲区大小
+ * @param settings 播放器设置指针
+ * @param size 视频缓冲区大小（单位 ms）
+*/
+PLAYER_API void player_settings_set_video_buffer_size(PlayerSettings* settings, uint32_t size);
 /**
  * @brief 设置窗口句柄
  * @param settings 播放器设置指针

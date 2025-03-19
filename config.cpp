@@ -83,3 +83,19 @@ int Config::LoggingLevel() {
         return AV_LOG_INFO;
     }
 }
+
+uint32_t Config::AudioBuffer() {
+    auto re = configs.find("audioBuffer");
+    if (re == configs.end()) {
+        return 0;
+    }
+    return std::stoul((*re).second);
+}
+
+uint32_t Config::VideoBuffer() {
+    auto re = configs.find("videoBuffer");
+    if (re == configs.end()) {
+        return 0;
+    }
+    return std::stoul((*re).second);
+}

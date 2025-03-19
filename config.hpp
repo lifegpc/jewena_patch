@@ -10,8 +10,12 @@ class Config {
             configs["appendLogging"] = "false";
             configs["loggingFile"] = "";
             configs["loggingLevel"] = "info";
+            configs["audioBuffer"] = "0";
+            configs["videoBuffer"] = "0";
         }
         bool Load(std::string path);
         bool IsAppendLogging();
         int LoggingLevel();
+        uint32_t AudioBuffer();
+        uint32_t VideoBuffer();
 };
