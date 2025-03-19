@@ -143,7 +143,8 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
             player_log(AV_LOG_ERROR, "Failed to initialize player.\n");
             goto end;
         }
-        player_wait_until_buffer_is_full(player);
+        // 可能导致BGI关掉视频？
+        // player_wait_until_buffer_is_full(player);
         if (player_play(player)) {
             player_log(AV_LOG_ERROR, "Failed to play video.\n");
             goto end;
