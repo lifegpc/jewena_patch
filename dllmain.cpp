@@ -8,6 +8,7 @@
 #include "fileop.h"
 #include <fcntl.h>
 #include "string_replace_file.hpp"
+#include "player.h"
 
 static HFONT(WINAPI *TrueCreateFontW)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) = CreateFontW;
 static HFONT(WINAPI *TrueCreateFontA)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCSTR lpFaceName) = CreateFontA;
@@ -22,10 +23,21 @@ static decltype(GetFileType) *TrueGetFileType = GetFileType;
 static decltype(GetFileAttributesW) *TrueGetFileAttributesW = GetFileAttributesW;
 static decltype(GetFileAttributesExW) *TrueGetFileAttributesExW = GetFileAttributesExW;
 
+typedef int64_t(*OpenMediaFileAndGetDuration)(DWORD* duration, const char* arcName, const char* videoName);
+typedef int64_t(*IsPlaying)();
+typedef int64_t(*IsMediaPlaying)();
+typedef int64_t(*ReleaseDirectShowGraph)();
+
 static Config config;
 static std::wstring defaultFont;
 static VFS vfs;
 static StringReplaceFile replaceFile;
+static PlayerSession* player = NULL;
+static PlayerSettings* settings = NULL;
+static OpenMediaFileAndGetDuration OpenMediaFileAndGetDurationFunc = NULL;
+static IsPlaying IsPlayingFunc = NULL;
+static IsMediaPlaying IsMediaPlayingFunc = NULL;
+static ReleaseDirectShowGraph ReleaseDirectShowGraphFunc = NULL;
 
 char* to_utf8(char* target, const char* source, UINT cp) {
     int count = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -73,7 +85,107 @@ PVOID GetHandle() {
     return (char*)hModule + 0xf40e0;
 }
 
+HWND* GetHwndPointer() {
+    HMODULE hModule = GetModuleHandleA(NULL);
+    return (HWND*)((char*)hModule + 0x1e1620);
+}
+
+OpenMediaFileAndGetDuration GetOpenMediaFileAndGetDuration() {
+    HMODULE hModule = GetModuleHandleA(NULL);
+    return (OpenMediaFileAndGetDuration)((char*)hModule + 0xed3d0);
+}
+
+IsPlaying GetIsPlaying() {
+    HMODULE hModule = GetModuleHandleA(NULL);
+    return (IsPlaying)((char*)hModule + 0xed810);
+}
+
+IsMediaPlaying GetIsMediaPlaying() {
+    HMODULE hModule = GetModuleHandleA(NULL);
+    return (IsMediaPlaying)((char*)hModule + 0xed2f0);
+}
+
+ReleaseDirectShowGraph GetReleaseDirectShowGraph() {
+    HMODULE hModule = GetModuleHandleA(NULL);
+    return (ReleaseDirectShowGraph)((char*)hModule + 0xed610);
+}
+
 static PVOID h = nullptr;
+
+int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, const char* videoName) {
+    player_free(&player);
+    player_log(AV_LOG_INFO, "BGI: Open Video: %s, %s\n", arcName, videoName);
+    int64_t ok = 0;
+    if (fileop::exists(videoName)) {
+        player_log(AV_LOG_INFO, "Video file exists: %s\n", videoName);
+        if (!settings) {
+            settings = player_settings_init();
+            if (!settings) {
+                player_log(AV_LOG_ERROR, "Failed to initialize player settings.\n");
+                goto end;
+            }
+        }
+        player_settings_set_hWnd(settings, (void**)GetHwndPointer());
+        if (player_create2(videoName, &player, settings)) {
+            player_log(AV_LOG_ERROR, "Failed to create player session.\n");
+            goto end;
+        }
+        if (wait_player_inited(player)) {
+            player_log(AV_LOG_ERROR, "Failed to initialize player.\n");
+            goto end;
+        }
+        if (player_play(player)) {
+            player_log(AV_LOG_ERROR, "Failed to play video.\n");
+            goto end;
+        }
+        int64_t dur;
+        if (!player_get_duration(player, &dur)) {
+            if (duration) {
+                *duration = dur / 1000;
+            }
+        } else {
+            player_log(AV_LOG_WARNING, "Failed to get video duration.\n");
+        }
+        goto works;
+    }
+end:
+    ok = OpenMediaFileAndGetDurationFunc(duration, arcName, videoName);
+works:
+    if (duration) {
+        char tmp[32];
+        int64_t dur = *duration * 1000;
+        player_ts_make_string(tmp, dur);
+        player_log(AV_LOG_INFO, "Video duration: %s\n", tmp);
+    }
+    return ok;
+}
+
+int64_t HookedIsPlaying() {
+    if (player) {
+        return player_is_playing(player);
+    }
+    return IsPlayingFunc();
+}
+
+int64_t HookedIsMediaPlaying() {
+    if (player) {
+        int64_t re = player_is_playing(player);
+        // 释放播放器，BGI在播放完毕后不会手动释放
+        if (!re) {
+            player_log(AV_LOG_INFO, "Auto Close\n");
+            player_free(&player);
+        }
+        return re;
+    }
+    int64_t re = IsMediaPlayingFunc();
+    return re;
+}
+
+int64_t HookedReleaseDirectShowGraph() {
+    player_log(AV_LOG_INFO, "BGI: Close\n");
+    player_free(&player);
+    return ReleaseDirectShowGraphFunc();
+}
 
 HFONT WINAPI HookedCreateFontW(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) {
     std::wstring name(lpFaceName);
@@ -183,11 +295,24 @@ extern "C" __declspec(dllexport) void Attach() {
     if (defaultFont.empty()) {
         defaultFont = L"微软雅黑";
     }
-    vfs.AddArchiveWithErrorMsg("jewena-chs.dat");
+    auto loggingFile = config.configs["loggingFile"];
+    if (!loggingFile.empty()) {
+        set_player_log_file(loggingFile.c_str(), config.IsAppendLogging() ? 1 : 0, config.LoggingLevel());
+    }
+    vfs.AddArchive("jewena-chs.dat");
+    vfs.AddArchive("video.dat");
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     h = GetHandle();
     DetourAttach(&h, (PVOID)jis_to_utf8);
+    OpenMediaFileAndGetDurationFunc = GetOpenMediaFileAndGetDuration();
+    DetourAttach(&OpenMediaFileAndGetDurationFunc, HookedOpenMediaFileAndGetDuration);
+    IsPlayingFunc = GetIsPlaying();
+    DetourAttach(&IsPlayingFunc, HookedIsPlaying);
+    IsMediaPlayingFunc = GetIsMediaPlaying();
+    DetourAttach(&IsMediaPlayingFunc, HookedIsMediaPlaying);
+    ReleaseDirectShowGraphFunc = GetReleaseDirectShowGraph();
+    DetourAttach(&ReleaseDirectShowGraphFunc, HookedReleaseDirectShowGraph);
     DetourAttach(&TrueCreateFontW, HookedCreateFontW);
     DetourAttach(&TrueCreateFontA, HookedCreateFontA);
     DetourAttach(&TrueCreateFileW, HookedCreateFileW);

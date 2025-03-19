@@ -7,6 +7,11 @@ class Config {
         Config() {
             configs["defaultFont"] = "微软雅黑";
             configs["stringReplaceFile"] = "";
+            configs["appendLogging"] = "false";
+            configs["loggingFile"] = "";
+            configs["loggingLevel"] = "info";
         }
         bool Load(std::string path);
+        bool IsAppendLogging();
+        int LoggingLevel();
 };

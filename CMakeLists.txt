@@ -9,6 +9,7 @@ endif()
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 set(DETOURS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/detours.lib")
+set(PLAYER_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/player.lib")
 
 set(ENABLE_ICONV OFF CACHE BOOL "Libiconv is not needed.")
 add_subdirectory(utils)
@@ -39,6 +40,7 @@ add_subdirectory("libzip")
 
 add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp vfs.hpp vfs.cpp string_replace_file.hpp string_replace_file.cpp)
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
+target_link_libraries(jewena_patch "${PLAYER_LIB}")
 target_link_libraries(jewena_patch utils)
 target_link_libraries(jewena_patch zip)
 

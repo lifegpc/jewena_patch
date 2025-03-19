@@ -2,6 +2,8 @@
 #include "fileop.h"
 #include "file_reader.h"
 #include "malloc.h"
+#include "str_util.h"
+#include "player.h"
 
 #include <fcntl.h>
 #if _WIN32
@@ -45,4 +47,39 @@ bool Config::Load(std::string path) {
     free_file_reader(reader);
     fileop::fclose(f);
     return true;
+}
+
+bool Config::IsAppendLogging() {
+    auto re = configs.find("appendLogging");
+    if (re == configs.end()) {
+        return false;
+    }
+    return str_util::parse_bool((*re).second);  
+}
+
+int Config::LoggingLevel() {
+    auto re = configs.find("loggingLevel");
+    if (re == configs.end()) {
+        return AV_LOG_INFO;
+    }
+    std::string level = str_util::tolower((*re).second);
+    if (level == "debug") {
+        return AV_LOG_DEBUG;
+    } else if (level == "verbose") {
+        return AV_LOG_VERBOSE;
+    } else if (level == "info") {
+        return AV_LOG_INFO;
+    } else if (level == "warning") {
+        return AV_LOG_WARNING;
+    } else if (level == "error") {
+        return AV_LOG_ERROR;
+    } else if (level == "fatal") {
+        return AV_LOG_FATAL;
+    } else if (level == "trace") {
+        return AV_LOG_TRACE;
+    } else if (level == "panic") {
+        return AV_LOG_PANIC;
+    } else {
+        return AV_LOG_INFO;
+    }
 }
