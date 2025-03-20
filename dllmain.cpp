@@ -8,7 +8,13 @@
 #include "fileop.h"
 #include <fcntl.h>
 #include "string_replace_file.hpp"
+#include "patch_config.h"
+#if HAVE_PLAYER
 #include "player.h"
+#endif
+#if HAVE_MPV
+#include "mpv/client.h"
+#endif
 
 static HFONT(WINAPI *TrueCreateFontW)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) = CreateFontW;
 static HFONT(WINAPI *TrueCreateFontA)(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCSTR lpFaceName) = CreateFontA;
@@ -23,21 +29,30 @@ static decltype(GetFileType) *TrueGetFileType = GetFileType;
 static decltype(GetFileAttributesW) *TrueGetFileAttributesW = GetFileAttributesW;
 static decltype(GetFileAttributesExW) *TrueGetFileAttributesExW = GetFileAttributesExW;
 
+#if HAVE_PLAYER || HAVE_MPV
 typedef int64_t(*OpenMediaFileAndGetDuration)(DWORD* duration, const char* arcName, const char* videoName);
 typedef int64_t(*IsPlaying)();
 typedef int64_t(*IsMediaPlaying)();
 typedef int64_t(*ReleaseDirectShowGraph)();
+#endif
 
 static Config config;
 static std::wstring defaultFont;
 static VFS vfs;
 static StringReplaceFile replaceFile;
+#if HAVE_PLAYER
 static PlayerSession* player = NULL;
 static PlayerSettings* settings = NULL;
+#endif
+#if HAVE_MPV
+static mpv_handle* player = NULL;
+#endif
+#if HAVE_PLAYER || HAVE_MPV
 static OpenMediaFileAndGetDuration OpenMediaFileAndGetDurationFunc = NULL;
 static IsPlaying IsPlayingFunc = NULL;
 static IsMediaPlaying IsMediaPlayingFunc = NULL;
 static ReleaseDirectShowGraph ReleaseDirectShowGraphFunc = NULL;
+#endif
 
 char* to_utf8(char* target, const char* source, UINT cp) {
     int count = MultiByteToWideChar(cp, MB_ERR_INVALID_CHARS, source, -1, NULL, 0);
@@ -85,6 +100,7 @@ PVOID GetHandle() {
     return (char*)hModule + 0xf40e0;
 }
 
+#if HAVE_PLAYER || HAVE_MPV
 HWND* GetHwndPointer() {
     HMODULE hModule = GetModuleHandleA(NULL);
     return (HWND*)((char*)hModule + 0x1e1620);
@@ -110,12 +126,17 @@ ReleaseDirectShowGraph GetReleaseDirectShowGraph() {
     return (ReleaseDirectShowGraph)((char*)hModule + 0xed610);
 }
 
+#endif
+
 static PVOID h = nullptr;
 
+#if HAVE_PLAYER || HAVE_MPV
+
 int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, const char* videoName) {
+    int64_t ok = 0;
+    #if HAVE_PLAYER
     player_free(&player);
     player_log(AV_LOG_INFO, "BGI: Open Video: %s, %s\n", arcName, videoName);
-    int64_t ok = 0;
     if (fileop::exists(videoName)) {
         player_log(AV_LOG_INFO, "Video file exists: %s\n", videoName);
         if (!settings) {
@@ -159,26 +180,59 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
         }
         goto works;
     }
+    #endif
+    #if HAVE_MPV
+    if (player) {
+        mpv_terminate_destroy(player);
+        player = NULL;
+    }
+    if (fileop::exists(videoName)) {
+        player = mpv_create();
+        if (!player) {
+            goto end;
+        }
+        HWND hwnd = *GetHwndPointer();
+        int64_t wid = (int64_t)(intptr_t)hwnd;
+        mpv_set_option(player, "wid", MPV_FORMAT_INT64, &wid);
+        mpv_set_option_string(player, "config", "no");
+        mpv_set_option_string(player, "input-default-bindings", "no");
+        mpv_set_option_string(player, "vo", "libmpv");
+        const char* cmd[] = { "loadfile", videoName, nullptr };
+        mpv_command(player, cmd);
+    }
+    #endif
 end:
     ok = OpenMediaFileAndGetDurationFunc(duration, arcName, videoName);
 works:
+    #if HAVE_PLAYER
     if (duration) {
         char tmp[32];
         int64_t dur = *duration * 1000;
         player_ts_make_string(tmp, dur);
         player_log(AV_LOG_INFO, "Video duration: %s\n", tmp);
     }
+    #endif
     return ok;
 }
 
 int64_t HookedIsPlaying() {
+    #if HAVE_PLAYER
     if (player) {
         return player_is_playing(player);
     }
+    #endif
+    #if HAVE_MPV
+    if (player) {
+        int64_t re = 0;
+        mpv_get_property(player, "core-idle", MPV_FORMAT_FLAG, &re);
+        return !re;
+    }
+    #endif
     return IsPlayingFunc();
 }
 
 int64_t HookedIsMediaPlaying() {
+    #if HAVE_PLAYER
     if (player) {
         int64_t re = player_is_playing(player);
         // 释放播放器，BGI在播放完毕后不会手动释放
@@ -188,15 +242,37 @@ int64_t HookedIsMediaPlaying() {
         }
         return re;
     }
+    #endif
+    #if HAVE_MPV
+    if (player) {
+        int64_t re = 0;
+        mpv_get_property(player, "core-idle", MPV_FORMAT_FLAG, &re);
+        if (re) {
+            mpv_terminate_destroy(player);
+            player = NULL;
+        }
+        return !re;
+    }
+    #endif
     int64_t re = IsMediaPlayingFunc();
     return re;
 }
 
 int64_t HookedReleaseDirectShowGraph() {
+    #if HAVE_PLAYER
     player_log(AV_LOG_INFO, "BGI: Close\n");
     player_free(&player);
+    #endif
+    #if HAVE_MPV
+    if (player) {
+        mpv_terminate_destroy(player);
+        player = NULL;
+    }
+    #endif
     return ReleaseDirectShowGraphFunc();
 }
+
+#endif
 
 HFONT WINAPI HookedCreateFontW(int nHeight, int nWidth, int nEscapement, int nOrientation, int fnWeight, DWORD dwItalic, DWORD dwUnderline, DWORD dwStrikeOut, DWORD dwCharSet, DWORD dwOutPrecision, DWORD dwClipPrecision, DWORD dwQuality, DWORD dwPitchAndFamily, LPCWSTR lpFaceName) {
     std::wstring name(lpFaceName);
@@ -306,16 +382,19 @@ extern "C" __declspec(dllexport) void Attach() {
     if (defaultFont.empty()) {
         defaultFont = L"微软雅黑";
     }
+    #if HAVE_PLAYER
     auto loggingFile = config.configs["loggingFile"];
     if (!loggingFile.empty()) {
         set_player_log_file(loggingFile.c_str(), config.IsAppendLogging() ? 1 : 0, config.LoggingLevel());
     }
+    #endif
     vfs.AddArchive("jewena-chs.dat");
     vfs.AddArchive("video.dat");
     DetourTransactionBegin();
     DetourUpdateThread(GetCurrentThread());
     h = GetHandle();
     DetourAttach(&h, (PVOID)jis_to_utf8);
+    #if HAVE_PLAYER || HAVE_MPV
     OpenMediaFileAndGetDurationFunc = GetOpenMediaFileAndGetDuration();
     DetourAttach(&OpenMediaFileAndGetDurationFunc, HookedOpenMediaFileAndGetDuration);
     IsPlayingFunc = GetIsPlaying();
@@ -324,6 +403,7 @@ extern "C" __declspec(dllexport) void Attach() {
     DetourAttach(&IsMediaPlayingFunc, HookedIsMediaPlaying);
     ReleaseDirectShowGraphFunc = GetReleaseDirectShowGraph();
     DetourAttach(&ReleaseDirectShowGraphFunc, HookedReleaseDirectShowGraph);
+    #endif
     DetourAttach(&TrueCreateFontW, HookedCreateFontW);
     DetourAttach(&TrueCreateFontA, HookedCreateFontA);
     DetourAttach(&TrueCreateFileW, HookedCreateFileW);

@@ -8,8 +8,22 @@ endif()
 
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
+option(USE_LIBMPV "Use libmpv." ON)
+option(USE_PLAYER "Use player." OFF)
+
+if (USE_LIBMPV AND USE_PLAYER)
+    message(FATAL_ERROR "USE_LIBMPV and USE_PLAYER cannot be both enabled.")
+endif()
+
+if (USE_LIBMPV)
+    set(HAVE_MPV 1)
+elseif (USE_PLAYER)
+    set(HAVE_PLAYER 1)
+endif()
+
 set(DETOURS_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/detours.lib")
 set(PLAYER_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/player.lib")
+set(LIBMPV_LIB "${CMAKE_CURRENT_SOURCE_DIR}/lib/libmpv.dll.a")
 
 set(ENABLE_ICONV OFF CACHE BOOL "Libiconv is not needed.")
 add_subdirectory(utils)
@@ -38,9 +52,16 @@ set(ZLIB_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH "Zlib is needed.")
 find_package(ZLIB REQUIRED)
 add_subdirectory("libzip")
 
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/patch_config.h.in" "${CMAKE_CURRENT_BINARY_DIR}/patch_config.h")
+include_directories("${CMAKE_CURRENT_BINARY_DIR}")
+
 add_library(jewena_patch SHARED dllmain.cpp config.hpp config.cpp vfs.hpp vfs.cpp string_replace_file.hpp string_replace_file.cpp)
 target_link_libraries(jewena_patch "${DETOURS_LIB}")
-target_link_libraries(jewena_patch "${PLAYER_LIB}")
+if (USE_LIBMPV)
+    target_link_libraries(jewena_patch "${LIBMPV_LIB}")
+elseif (USE_PLAYER)
+    target_link_libraries(jewena_patch "${PLAYER_LIB}")
+endif()
 target_link_libraries(jewena_patch utils)
 target_link_libraries(jewena_patch zip)
 

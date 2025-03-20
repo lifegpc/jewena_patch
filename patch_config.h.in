@@ -1,0 +1,5 @@
+#ifndef _PATCH_CONFIG_H
+#define _PATCH_CONFIG_H
+#cmakedefine HAVE_MPV @HAVE_MPV@
+#cmakedefine HAVE_PLAYER @HAVE_PLAYER@
+#endif
