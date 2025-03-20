@@ -191,14 +191,57 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
         if (!player) {
             goto end;
         }
+        int err = mpv_initialize(player);
+        if (err) {
+            goto end;
+        }
         HWND hwnd = *GetHwndPointer();
-        int64_t wid = (int64_t)(intptr_t)hwnd;
+        int64_t wid = (int64_t)(uint32_t)hwnd;
         mpv_set_option(player, "wid", MPV_FORMAT_INT64, &wid);
         mpv_set_option_string(player, "config", "no");
         mpv_set_option_string(player, "input-default-bindings", "no");
-        mpv_set_option_string(player, "vo", "libmpv");
+        mpv_set_option_string(player, "hwdec", "auto");
+        mpv_set_option_string(player, "auto-window-resize", "no");
+        mpv_set_option_string(player, "fullscreen", "no");
+        auto loggingFile = config.configs["loggingFile"];
+        if (!loggingFile.empty()) {
+            mpv_set_option_string(player, "log-file", loggingFile.c_str());
+        }
         const char* cmd[] = { "loadfile", videoName, nullptr };
-        mpv_command(player, cmd);
+        err = mpv_command(player, cmd);
+        if (err) {
+            goto end;
+        }
+        while (1) {
+            mpv_event* event = mpv_wait_event(player, 10);
+            if (event->event_id == MPV_EVENT_FILE_LOADED) {
+                break;
+            }
+            if (event->event_id == MPV_EVENT_SHUTDOWN) {
+                goto end;
+            }
+        }
+        const char* play_cmd[] = { "set", "pause", "no", NULL };
+        err = mpv_command(player, play_cmd);
+        if (err) {
+            goto end;
+        }
+        while (1) {
+            int64_t idle = 0;
+            if (mpv_get_property(player, "core-idle", MPV_FORMAT_FLAG, &idle) < 0) {
+                goto end;
+            }
+            if (!idle) {
+                break;
+            }
+            Sleep(10);
+        }
+        int64_t dur = 0;
+        mpv_get_property(player, "duration", MPV_FORMAT_INT64, &dur);
+        if (duration) {
+            *duration = dur / 1000;
+        }
+        return 1;
     }
     #endif
 end:
