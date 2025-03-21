@@ -196,7 +196,7 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
             goto end;
         }
         HWND hwnd = *GetHwndPointer();
-        int64_t wid = (int64_t)(uint32_t)hwnd;
+        int64_t wid = (int64_t)(intptr_t)hwnd;
         mpv_set_option(player, "wid", MPV_FORMAT_INT64, &wid);
         mpv_set_option_string(player, "config", "no");
         mpv_set_option_string(player, "input-default-bindings", "no");
