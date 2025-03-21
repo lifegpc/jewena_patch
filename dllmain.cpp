@@ -203,6 +203,8 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
         mpv_set_option_string(player, "hwdec", "auto");
         mpv_set_option_string(player, "auto-window-resize", "no");
         mpv_set_option_string(player, "fullscreen", "no");
+        mpv_set_option_string(player, "ontop", "no");
+        mpv_set_option_string(player, "d3d11-exclusive-fs", "no");
         auto loggingFile = config.configs["loggingFile"];
         if (!loggingFile.empty()) {
             mpv_set_option_string(player, "log-file", loggingFile.c_str());
