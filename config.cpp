@@ -42,12 +42,24 @@ bool Config::Load(std::string path) {
         }
         std::string key = l.substr(0, eq_pos);
         std::string value = l.substr(eq_pos + 1);
+#if HAVE_MPV
+        if (key.find("mpv-") == 0) {
+            key = key.substr(4);
+            if (str_util::tolower(key) == "wid") {
+                continue;
+            }
+            mpv.push_back(std::make_pair(key, value));
+            continue;
+        }
+#endif
         configs[key] = value;
     }
     free_file_reader(reader);
     fileop::fclose(f);
     return true;
 }
+
+#if HAVE_PLAYER
 
 bool Config::IsAppendLogging() {
     auto re = configs.find("appendLogging");
@@ -99,3 +111,5 @@ uint32_t Config::VideoBuffer() {
     }
     return std::stoul((*re).second);
 }
+
+#endif

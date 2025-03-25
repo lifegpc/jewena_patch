@@ -10,6 +10,11 @@ include_directories("${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 option(USE_LIBMPV "Use libmpv." ON)
 option(USE_PLAYER "Use player." OFF)
+option(STATIC_CRT "Use static CRT" ON)
+
+if (STATIC_CRT)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 if (USE_LIBMPV AND USE_PLAYER)
     message(FATAL_ERROR "USE_LIBMPV and USE_PLAYER cannot be both enabled.")

@@ -196,18 +196,14 @@ int64_t HookedOpenMediaFileAndGetDuration(DWORD* duration, const char* arcName, 
             goto end;
         }
         HWND hwnd = *GetHwndPointer();
-        int64_t wid = (int64_t)(intptr_t)hwnd;
+        int64_t wid = (int64_t)(uint32_t)hwnd;
         mpv_set_option(player, "wid", MPV_FORMAT_INT64, &wid);
         mpv_set_option_string(player, "config", "no");
         mpv_set_option_string(player, "input-default-bindings", "no");
         mpv_set_option_string(player, "hwdec", "auto");
         mpv_set_option_string(player, "auto-window-resize", "no");
-        // mpv_set_option_string(player, "fullscreen", "no");
-        // mpv_set_option_string(player, "ontop", "no");
-        // mpv_set_option_string(player, "d3d11-exclusive-fs", "no");
-        auto loggingFile = config.configs["loggingFile"];
-        if (!loggingFile.empty()) {
-            mpv_set_option_string(player, "log-file", loggingFile.c_str());
+        for (auto& i : config.mpv) {
+            mpv_set_option_string(player, i.first.c_str(), i.second.c_str());
         }
         const char* cmd[] = { "loadfile", videoName, nullptr };
         err = mpv_command(player, cmd);
