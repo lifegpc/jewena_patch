@@ -71,3 +71,4 @@ target_link_libraries(jewena_patch utils)
 target_link_libraries(jewena_patch zip)
 
 add_executable(jewena-chs WIN32 main.cpp winres.rc jewena-chs.exe.manifest)
+target_link_libraries(jewena-chs utils)
